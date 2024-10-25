@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estado de Deuda</title>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.9.2/dist/umd/popper.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <style>
+        body {
+            background: linear-gradient(to right, #6a5acd, #8a2be2);
+            color: white;
+            font-family: 'Arial', sans-serif;
+        }
+        .container {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            padding: 2rem;
+        }
+        h1, h3, h4 {
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+        }
+        .card {
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 10px;
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: scale(1.02);
+        }
+        .situacion-1 { color: green; }
+        .situacion-6 { color: red; }
+        .situacion-intermedio { color: yellow; }
+        .note {
+            font-size: 0.9rem;
+            text-align: center;
+            margin-top: 1rem;
+        }
+        .situacion-section {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 2rem;
+        }
+        .btn-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        @media (min-width: 768px) {
+            .btn-container {
+                flex-direction: row;
+                justify-content: center;
+            }
+        }
+        @media (max-width: 576px) {
+            h1, h3, h4, .note {
+                font-size: 0.8rem; /* Letras más pequeñas en móvil */
+            }
+            .card-text {
+                font-size: 0.7rem; /* Texto más pequeño en móviles */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center">Consulta de Estado de Deuda</h1>
+        <form id="deudaForm">
+            <div class="form-group">
+                <label for="cuit">Ingrese su CUIL o CUIT:</label>
+                <input type="text" class="form-control" id="cuit" placeholder="Ejemplo: 20-20393367-289" required>
+            </div>
+            <div class="btn-container">
+                <button type="submit" class="btn btn-light">Consultar</button>
+                <button type="button" class="btn btn-secondary" id="imprimir" disabled>Imprimir PDF</button>
+                <button type="button" class="btn btn-danger" id="nuevaBusqueda">Nueva Búsqueda</button>
+            </div>
+        </form>
+        
+        <div id="resultado" class="mt-4"></div>
+        <p class="note"><small><em>Nota: Los montos son estimados y pueden variar si se involucran financieras.</em></small></p>
+
+        <div class="situacion-section">
+            <h4 class="text-center">Clasificación de Situaciones de Crédito</h4>
+            <ul class="list-group">
+                <li class="list-group-item" style="background: rgba(255, 255, 255, 0.2);">1: <strong>Normal</strong> - Cumple con sus obligaciones en tiempo y forma.</li>
+                <li class="list-group-item" style="background: rgba(255, 255, 255, 0.2);">2: <strong>Observado</strong> - Atraso leve, no significativo.</li>
+                <li class="list-group-item" style="background: rgba(255, 255, 255, 0.2);">3: <strong>Irregular</strong> - Atrasos más marcados, pero aún con capacidad de pago.</li>
+                <li class="list-group-item" style="background: rgba(255, 255, 255, 0.2);">4: <strong>Dudoso</strong> - Riesgo significativo de incumplimiento.</li>
+                <li class="list-group-item" style="background: rgba(255, 255, 255, 0.2);">5: <strong>Pérdida</strong> - Incumplimiento significativo, poco probable la recuperación.</li>
+                <li class="list-group-item" style="background: rgba(255, 255, 255, 0.2);">6: <strong>Judicial</strong> - En proceso judicial por falta de pago.</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('deudaForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const cuit = document.getElementById('cuit').value;
+
+            fetch(`https://api.bcra.gob.ar/centraldedeudores/v1.0/Deudas/${cuit}`)
+                .then(response => response.json())
+                .then(data => {
+                    let resultadoDiv = document.getElementById('resultado');
+                    resultadoDiv.innerHTML = `<h3>Estado de Deuda para ${data.results.denominacion} (CUIT: ${data.results.identificacion})</h3>`;
+                    let contenidoPDF = `Estado de Deuda para ${data.results.denominacion} (CUIT: ${data.results.identificacion})\n\n`;
+
+                    if (data.results.periodos.length > 0) {
+                        data.results.periodos.forEach(periodo => {
+                            resultadoDiv.innerHTML += `<h4>Periodo: ${periodo.periodo}</h4>`;
+                            contenidoPDF += `Periodo: ${periodo.periodo}\n`;
+                            periodo.entidades.forEach(entidad => {
+                                const situacionClass = entidad.situacion === "1" ? "situacion-1" :
+                                                       entidad.situacion === "6" ? "situacion-6" :
+                                                       "situacion-intermedio";
+                                const montoFormateado = `${entidad.monto}.000`; // Agregar 000 al monto
+
+                                resultadoDiv.innerHTML += `
+                                    <div class="card mb-3">
+                                        <div class="card-body">
+                                            <h5 class="card-title">${entidad.entidad}</h5>
+                                            <p class="card-text">Monto: $${montoFormateado}</p>
+                                            <p class="card-text ${situacionClass}">Situación: ${entidad.situacion}</p>
+                                        </div>
+                                    </div>
+                                `;
+                                contenidoPDF += `Entidad: ${entidad.entidad}\nMonto: $${montoFormateado}\nSituación: ${entidad.situacion}\n\n`;
+                            });
+                        });
+                        document.getElementById('imprimir').disabled = false; // habilitar botón de imprimir
+                    } else {
+                        resultadoDiv.innerHTML += `<p>No se encontraron datos para el CUIT ingresado.</p>`;
+                        document.getElementById('imprimir').disabled = true; // deshabilitar botón de imprimir
+                    }
+                    
+                    // Guardar el contenido para imprimir
+                    document.getElementById('imprimir').onclick = function() {
+                        const { jsPDF } = window.jspdf;
+                        const doc = new jsPDF();
+                        const lines = contenidoPDF.split('\n');
+                        lines.forEach((line, index) => {
+                            doc.text(line, 10, 10 + (index * 10));
+                        });
+                        doc.save('estado_deuda.pdf');
+                    };
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('resultado').innerHTML = '<p>Error al consultar la deuda. Intente más tarde.</p>';
+                });
+        });
+
+        document.getElementById('nuevaBusqueda').addEventListener('click', function() {
+            document.getElementById('cuit').value = '';
+            document.getElementById('resultado').innerHTML = '';
+            document.getElementById('imprimir').disabled = true; // deshabilitar botón de imprimir
+        });
+    </script>
+</body>
+</html>
